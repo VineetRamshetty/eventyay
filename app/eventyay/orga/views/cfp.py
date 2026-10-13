@@ -984,6 +984,7 @@ class CfPFlowEditor(EventPermissionRequired, TemplateView):
         return ctx
 
     def post(self, request, *args, **kwargs):
+        """Validate and apply CfP flow editor updates or configuration resets."""
         try:
             data = json.loads(request.body.decode())
         except (json.JSONDecodeError, UnicodeDecodeError) as e:

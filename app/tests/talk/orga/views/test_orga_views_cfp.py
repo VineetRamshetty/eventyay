@@ -93,6 +93,7 @@ def test_edit_cfp_flow(orga_client, event):
 
 @pytest.mark.django_db
 def test_edit_cfp_flow_malformed_payload(orga_client, event):
+    """Verify that submitting malformed CfP flow data returns 400 and preserves existing configuration."""
     with scope(event=event):
         initial_config = event.cfp.settings.get("flow", {})
 

@@ -80,6 +80,7 @@ def test_i18n_string(data, locales, expected):
 )
 @pytest.mark.django_db
 def test_cfp_flow(event, data, expected):
+    """Verify CfP flow configuration normalization and persistence behavior."""
     with scope(event=event):
         assert event.cfp.settings["flow"] == {}
         event.cfp_flow.save_config(event.cfp_flow.get_config(data))
@@ -96,7 +97,8 @@ def test_cfp_flow(event, data, expected):
         ([{"identifier": "info", "fields": [{"key": "k"}]}], None),
         ({"steps": []}, None),
         ({"steps": [{"identifier": "info"}]}, None),
-        ({"steps": {"info": {"fields": []}}}, None),
+        ({"steps": [{"identifier": "info", "fields": [{"key": "k"}]}]}, None),
+        ({"steps": {"info": {"fields": [{"key": "k"}]}}}, None),
         (
             {"steps": [{}]},
             "steps[0] is missing required field 'identifier'.",
@@ -108,6 +110,10 @@ def test_cfp_flow(event, data, expected):
         (
             {"steps": [{"identifier": 123}]},
             "steps[0]['identifier'] must be a string.",
+        ),
+        (
+            {"steps": [{"identifier": "info"}, {"identifier": "info"}]},
+            "Duplicate step identifier 'info' found in steps.",
         ),
         (
             {"steps": "invalid"},
@@ -126,6 +132,22 @@ def test_cfp_flow(event, data, expected):
             "steps[0]['fields'][0] must be an object.",
         ),
         (
+            {"steps": [{"identifier": "info", "fields": [{}]}]},
+            "steps[0]['fields'][0] is missing required field 'key'.",
+        ),
+        (
+            {"steps": [{"identifier": "info", "fields": [{"key": 123}]}]},
+            "steps[0]['fields'][0]['key'] must be a string.",
+        ),
+        (
+            {"steps": [{"identifier": "info", "title": {"en": []}}]},
+            "steps[0]['title']['en'] must be a string.",
+        ),
+        (
+            {"steps": [{"identifier": "info", "fields": [{"key": "k", "help_text": {"en": []}}]}]},
+            "steps[0]['fields'][0]['help_text']['en'] must be a string.",
+        ),
+        (
             {"steps": {"info": "not-a-dict"}},
             "Step 'info' configuration must be an object.",
         ),
@@ -133,10 +155,20 @@ def test_cfp_flow(event, data, expected):
             {"steps": {"info": {"fields": "not-a-list"}}},
             "Step 'info'['fields'] must be a list.",
         ),
+        (
+            {"steps": {"info": {"fields": [{}]}}},
+            "Step 'info'['fields'][0] is missing required field 'key'.",
+        ),
+        (
+            {"steps": {"info": {"title": {"en": 123}}}},
+            "Step 'info'['title']['en'] must be a string.",
+        ),
     ),
 )
 def test_validate_editor_payload(data, expected_error):
+    """Verify that validate_editor_payload correctly accepts valid configurations and rejects malformed inputs."""
     assert validate_editor_payload(data) == expected_error
+
 
 
 

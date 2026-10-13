@@ -939,6 +939,7 @@ class CfPFlow:
             previous_step = step
 
     def get_config(self, data, json_compat=False):
+        """Parse and normalize flow configuration data into step configurations."""
         if isinstance(data, str) and data:
             data = json.loads(data)
         if not isinstance(data, dict):
@@ -961,6 +962,7 @@ class CfPFlow:
         return config
 
     def get_editor_config(self, json_compat=False):
+        """Generate editor-compatible configuration for all generic flow steps."""
         config = self.config
         locales = self.event.locales
         steps = []
@@ -1004,9 +1006,11 @@ class CfPFlow:
         return steps
 
     def get_config_json(self):
+        """Return serialized JSON representation of current flow configuration."""
         return json.dumps(self.config, cls=I18nJSONEncoder)
 
     def save_config(self, data):
+        """Save updated flow configuration to event CfP settings."""
         if isinstance(data, list) or (isinstance(data, dict) and 'steps' not in data):
             data = {'steps': data}
         data = self.get_config(data, json_compat=True)
@@ -1014,9 +1018,11 @@ class CfPFlow:
         self.event.cfp.save()
 
     def reset(self):
+        """Reset flow configuration to default state."""
         self.save_config(None)
 
     def _get_step_config_from_data(self, data):
+        """Extract sanitized step configuration data from an input dictionary."""
         step_config = {}
         if not isinstance(data, dict):
             return step_config
@@ -1037,15 +1043,51 @@ class CfPFlow:
                 field = {}
                 for key in ('help_text', 'request', 'required', 'key', 'label'):
                     if key in config_field:
-                        field[key] = (
-                            i18n_string(config_field[key], locales) if key in ('help_text', 'label') else config_field[key]
-                        )
+                        if key in ('help_text', 'label'):
+                            field[key] = i18n_string(config_field[key], locales)
+                        else:
+                            field[key] = config_field[key]
                 step_config['fields'].append(field)
         return step_config
 
     @property
     def steps(self):
+        """Return the list of configured BaseCfPStep instances in priority order."""
         return list(self.steps_dict.values())
+
+
+def _validate_i18n_value(value, field_name, context_str):
+    """Validate that an internationalized field value is a string or a valid locale-to-string mapping."""
+    if isinstance(value, str):
+        return None
+    if isinstance(value, dict):
+        for loc, text in value.items():
+            if not isinstance(loc, str) or not loc:
+                return f"{context_str}['{field_name}'] locale keys must be non-empty strings."
+            if not isinstance(text, str):
+                return f"{context_str}['{field_name}']['{loc}'] must be a string."
+        return None
+    return f"{context_str}['{field_name}'] must be a string or a dictionary of locale strings to strings."
+
+
+def _validate_fields(fields, context_str):
+    """Validate the fields list within a step configuration."""
+    if not isinstance(fields, list):
+        return f"{context_str}['fields'] must be a list."
+    for field_index, field in enumerate(fields):
+        field_context = f"{context_str}['fields'][{field_index}]"
+        if not isinstance(field, dict):
+            return f"{field_context} must be an object."
+        if "key" not in field or not field["key"]:
+            return f"{field_context} is missing required field 'key'."
+        if not isinstance(field["key"], str):
+            return f"{field_context}['key'] must be a string."
+        for i18n_key in ("help_text", "label"):
+            if i18n_key in field:
+                err = _validate_i18n_value(field[i18n_key], i18n_key, field_context)
+                if err:
+                    return err
+    return None
 
 
 def validate_editor_payload(data):
@@ -1066,33 +1108,50 @@ def validate_editor_payload(data):
         steps = data
 
     if isinstance(steps, list):
+        seen_identifiers = set()
         for index, entry in enumerate(steps):
+            step_context = f"steps[{index}]"
             if not isinstance(entry, dict):
-                return f"steps[{index}] must be an object."
+                return f"{step_context} must be an object."
             if "identifier" not in entry or not entry["identifier"]:
-                return f"steps[{index}] is missing required field 'identifier'."
+                return f"{step_context} is missing required field 'identifier'."
             if not isinstance(entry["identifier"], str):
-                return f"steps[{index}]['identifier'] must be a string."
+                return f"{step_context}['identifier'] must be a string."
+            if entry["identifier"] in seen_identifiers:
+                return f"Duplicate step identifier '{entry['identifier']}' found in steps."
+            seen_identifiers.add(entry["identifier"])
+
+            for i18n_key in ("title", "text", "label"):
+                if i18n_key in entry:
+                    err = _validate_i18n_value(entry[i18n_key], i18n_key, step_context)
+                    if err:
+                        return err
+
             if "fields" in entry:
-                if not isinstance(entry["fields"], list):
-                    return f"steps[{index}]['fields'] must be a list."
-                for field_index, field in enumerate(entry["fields"]):
-                    if not isinstance(field, dict):
-                        return f"steps[{index}]['fields'][{field_index}] must be an object."
+                err = _validate_fields(entry["fields"], step_context)
+                if err:
+                    return err
     elif isinstance(steps, dict):
         for key, entry in steps.items():
+            step_context = f"Step '{key}'"
             if not isinstance(key, str) or not key:
                 return "Step identifier keys must be non-empty strings."
             if not isinstance(entry, dict):
-                return f"Step '{key}' configuration must be an object."
+                return f"{step_context} configuration must be an object."
+
+            for i18n_key in ("title", "text", "label"):
+                if i18n_key in entry:
+                    err = _validate_i18n_value(entry[i18n_key], i18n_key, step_context)
+                    if err:
+                        return err
+
             if "fields" in entry:
-                if not isinstance(entry["fields"], list):
-                    return f"Step '{key}'['fields'] must be a list."
-                for field_index, field in enumerate(entry["fields"]):
-                    if not isinstance(field, dict):
-                        return f"Step '{key}'['fields'][{field_index}] must be an object."
+                err = _validate_fields(entry["fields"], step_context)
+                if err:
+                    return err
     else:
         return "'steps' must be a list or dictionary."
 
     return None
+
 
