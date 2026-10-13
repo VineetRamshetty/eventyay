@@ -7,7 +7,7 @@ from django_scopes import scope
 from i18nfield.strings import LazyI18nString
 
 from eventyay.cfp.forms.cfp import CfPFormMixin
-from eventyay.cfp.flow import BaseCfPStep, FormFlowStep, i18n_string
+from eventyay.cfp.flow import BaseCfPStep, FormFlowStep, i18n_string, validate_editor_payload
 
 
 @pytest.mark.parametrize(
@@ -72,6 +72,10 @@ def test_i18n_string(data, locales, expected):
         ),
         ({"steps": []}, {"steps": {}}),
         ({"steps": [{"identifier": "info"}]}, {"steps": {"info": {"fields": []}}}),
+        ({"steps": [{}]}, {"steps": {}}),
+        ({"steps": [{"identifier": ""}]}, {"steps": {}}),
+        ({"steps": [{"identifier": "info"}, {}]}, {"steps": {"info": {"fields": []}}}),
+        ({"steps": {"invalid_step": "not-a-dict"}}, {"steps": {}}),
     ),
 )
 @pytest.mark.django_db
@@ -81,6 +85,59 @@ def test_cfp_flow(event, data, expected):
         event.cfp_flow.save_config(event.cfp_flow.get_config(data))
         assert event.cfp.settings["flow"] == expected
         assert event.cfp_flow.get_config_json()
+
+
+@pytest.mark.parametrize(
+    "data,expected_error",
+    (
+        (None, None),
+        ([], None),
+        ([{"identifier": "info"}], None),
+        ([{"identifier": "info", "fields": [{"key": "k"}]}], None),
+        ({"steps": []}, None),
+        ({"steps": [{"identifier": "info"}]}, None),
+        ({"steps": {"info": {"fields": []}}}, None),
+        (
+            {"steps": [{}]},
+            "steps[0] is missing required field 'identifier'.",
+        ),
+        (
+            {"steps": [{"identifier": ""}]},
+            "steps[0] is missing required field 'identifier'.",
+        ),
+        (
+            {"steps": [{"identifier": 123}]},
+            "steps[0]['identifier'] must be a string.",
+        ),
+        (
+            {"steps": "invalid"},
+            "'steps' must be a list or dictionary.",
+        ),
+        (
+            "not a dict or list",
+            "Payload must be a dictionary or a list.",
+        ),
+        (
+            {"steps": [{"identifier": "info", "fields": "not-a-list"}]},
+            "steps[0]['fields'] must be a list.",
+        ),
+        (
+            {"steps": [{"identifier": "info", "fields": ["not-a-dict"]}]},
+            "steps[0]['fields'][0] must be an object.",
+        ),
+        (
+            {"steps": {"info": "not-a-dict"}},
+            "Step 'info' configuration must be an object.",
+        ),
+        (
+            {"steps": {"info": {"fields": "not-a-list"}}},
+            "Step 'info'['fields'] must be a list.",
+        ),
+    ),
+)
+def test_validate_editor_payload(data, expected_error):
+    assert validate_editor_payload(data) == expected_error
+
 
 
 def test_base_cfp_step_attributes():

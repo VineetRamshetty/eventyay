@@ -948,9 +948,13 @@ class CfPFlow:
         steps = data.get('steps', {})
         if isinstance(steps, list):  # This is what we get from the editor
             for entry in steps:
+                if not isinstance(entry, dict) or 'identifier' not in entry or not entry['identifier']:
+                    continue
                 config['steps'][entry['identifier']] = self._get_step_config_from_data(entry)
-        else:
+        elif isinstance(steps, dict):
             for key, value in steps.items():
+                if not isinstance(value, dict):
+                    continue
                 config['steps'][key] = self._get_step_config_from_data(value)
         if json_compat:
             config = json.loads(json.dumps(config, cls=I18nJSONEncoder))
@@ -1014,6 +1018,8 @@ class CfPFlow:
 
     def _get_step_config_from_data(self, data):
         step_config = {}
+        if not isinstance(data, dict):
+            return step_config
         locales = self.event.locales
         for i18n_configurable in ('title', 'text', 'label'):
             if i18n_configurable in data:
@@ -1023,16 +1029,70 @@ class CfPFlow:
                 step_config[configurable] = data[configurable]
 
         step_config['fields'] = []
-        for config_field in data.get('fields', []):
-            field = {}
-            for key in ('help_text', 'request', 'required', 'key', 'label'):
-                if key in config_field:
-                    field[key] = (
-                        i18n_string(config_field[key], locales) if key in ('help_text', 'label') else config_field[key]
-                    )
-            step_config['fields'].append(field)
+        fields = data.get('fields', [])
+        if isinstance(fields, list):
+            for config_field in fields:
+                if not isinstance(config_field, dict):
+                    continue
+                field = {}
+                for key in ('help_text', 'request', 'required', 'key', 'label'):
+                    if key in config_field:
+                        field[key] = (
+                            i18n_string(config_field[key], locales) if key in ('help_text', 'label') else config_field[key]
+                        )
+                step_config['fields'].append(field)
         return step_config
 
     @property
     def steps(self):
         return list(self.steps_dict.values())
+
+
+def validate_editor_payload(data):
+    """Validate CfP flow configuration payload before saving.
+
+    Returns None if valid, or a human-readable error string if invalid.
+    """
+    if data is None:
+        return None
+    if not isinstance(data, (dict, list)):
+        return "Payload must be a dictionary or a list."
+
+    if isinstance(data, list):
+        steps = data
+    elif "steps" in data:
+        steps = data["steps"]
+    else:
+        steps = data
+
+    if isinstance(steps, list):
+        for index, entry in enumerate(steps):
+            if not isinstance(entry, dict):
+                return f"steps[{index}] must be an object."
+            if "identifier" not in entry or not entry["identifier"]:
+                return f"steps[{index}] is missing required field 'identifier'."
+            if not isinstance(entry["identifier"], str):
+                return f"steps[{index}]['identifier'] must be a string."
+            if "fields" in entry:
+                if not isinstance(entry["fields"], list):
+                    return f"steps[{index}]['fields'] must be a list."
+                for field_index, field in enumerate(entry["fields"]):
+                    if not isinstance(field, dict):
+                        return f"steps[{index}]['fields'][{field_index}] must be an object."
+    elif isinstance(steps, dict):
+        for key, entry in steps.items():
+            if not isinstance(key, str) or not key:
+                return "Step identifier keys must be non-empty strings."
+            if not isinstance(entry, dict):
+                return f"Step '{key}' configuration must be an object."
+            if "fields" in entry:
+                if not isinstance(entry["fields"], list):
+                    return f"Step '{key}'['fields'] must be a list."
+                for field_index, field in enumerate(entry["fields"]):
+                    if not isinstance(field, dict):
+                        return f"Step '{key}'['fields'][{field_index}] must be an object."
+    else:
+        return "'steps' must be a list or dictionary."
+
+    return None
+
