@@ -949,12 +949,16 @@ class CfPFlow:
         steps = data.get('steps', {})
         if isinstance(steps, list):  # This is what we get from the editor
             for entry in steps:
-                if not isinstance(entry, dict) or 'identifier' not in entry or not entry['identifier']:
+                if (
+                    not isinstance(entry, dict)
+                    or not isinstance(entry.get('identifier'), str)
+                    or not entry['identifier']
+                ):
                     continue
                 config['steps'][entry['identifier']] = self._get_step_config_from_data(entry)
         elif isinstance(steps, dict):
             for key, value in steps.items():
-                if not isinstance(value, dict):
+                if not isinstance(key, str) or not key or not isinstance(value, dict):
                     continue
                 config['steps'][key] = self._get_step_config_from_data(value)
         if json_compat:
@@ -1038,7 +1042,11 @@ class CfPFlow:
         fields = data.get('fields', [])
         if isinstance(fields, list):
             for config_field in fields:
-                if not isinstance(config_field, dict):
+                if (
+                    not isinstance(config_field, dict)
+                    or not isinstance(config_field.get('key'), str)
+                    or not config_field['key']
+                ):
                     continue
                 field = {}
                 for key in ('help_text', 'request', 'required', 'key', 'label'):
@@ -1095,8 +1103,6 @@ def validate_editor_payload(data):
 
     Returns None if valid, or a human-readable error string if invalid.
     """
-    if data is None:
-        return None
     if not isinstance(data, (dict, list)):
         return "Payload must be a dictionary or a list."
 

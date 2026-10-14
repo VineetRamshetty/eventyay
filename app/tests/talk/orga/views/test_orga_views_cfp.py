@@ -107,6 +107,13 @@ def test_edit_cfp_flow_malformed_payload(orga_client, event):
     assert "error" in data
     assert "missing required field 'identifier'" in data["error"]
 
+    response = orga_client.post(
+        event.cfp.urls.editor,
+        "null",
+        content_type="application/json",
+    )
+    assert response.status_code == 400, response.text
+
     with scope(event=event):
         event.refresh_from_db()
         assert event.cfp.settings.get("flow", {}) == initial_config

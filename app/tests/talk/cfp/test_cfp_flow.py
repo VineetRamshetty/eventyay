@@ -74,7 +74,16 @@ def test_i18n_string(data, locales, expected):
         ({"steps": [{"identifier": "info"}]}, {"steps": {"info": {"fields": []}}}),
         ({"steps": [{}]}, {"steps": {}}),
         ({"steps": [{"identifier": ""}]}, {"steps": {}}),
+        ({"steps": [{"identifier": ["info"]}]}, {"steps": {}}),
         ({"steps": [{"identifier": "info"}, {}]}, {"steps": {"info": {"fields": []}}}),
+        (
+            {"steps": [{"identifier": "info", "fields": [{}]}]},
+            {"steps": {"info": {"fields": []}}},
+        ),
+        (
+            {"steps": [{"identifier": "info", "fields": [{"key": 123}]}]},
+            {"steps": {"info": {"fields": []}}},
+        ),
         ({"steps": {"invalid_step": "not-a-dict"}}, {"steps": {}}),
     ),
 )
@@ -91,7 +100,7 @@ def test_cfp_flow(event, data, expected):
 @pytest.mark.parametrize(
     "data,expected_error",
     (
-        (None, None),
+        (None, "Payload must be a dictionary or a list."),
         ([], None),
         ([{"identifier": "info"}], None),
         ([{"identifier": "info", "fields": [{"key": "k"}]}], None),
